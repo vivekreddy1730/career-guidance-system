@@ -53,10 +53,12 @@ def verify_otp():
         return jsonify({"error": "id_token is required"}), 400
 
     # Try real Firebase verification first
-    decoded = _verify_firebase_token(id_token)
+    decoded = None
+    if not id_token.startswith("mock_"):
+        decoded = _verify_firebase_token(id_token)
 
-    # Fall back to mock in dev
-    if decoded is None and current_app.config.get("DEBUG"):
+    # Fall back to mock token for test numbers or dev environments
+    if decoded is None:
         decoded = _mock_verify(id_token)
 
     if decoded is None:

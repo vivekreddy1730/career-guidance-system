@@ -15,13 +15,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 — clear token and redirect to login
+// Handle 401 — clear token and redirect to login only for authenticated routes, NOT login itself
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isAuthRoute = error.config?.url?.includes("/auth/verify-otp");
+    if (error.response?.status === 401 && !isAuthRoute) {
       localStorage.removeItem("access_token");
-      window.location.href = "/login";
+      if (window.location.pathname !== "/login" && window.location.pathname !== "/register") {
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(error);
   }
