@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { Navigate } from "react-router-dom";
 import { getMe } from "../api/endpoints";
 
 const AuthContext = createContext(null);
@@ -51,10 +52,11 @@ export function useAuth() {
 
 export function PrivateRoute({ children }) {
   const { student, loading } = useAuth();
+  const token = localStorage.getItem("access_token");
 
   if (loading) {
     return (
-      <div className="d-flex justify-content-center align-items-center vh-100">
+      <div className="d-flex justify-content-center align-items-center vh-100" style={{ background: "var(--bg-dark)" }}>
         <div className="spinner-border text-primary" role="status">
           <span className="visually-hidden">Loading...</span>
         </div>
@@ -62,9 +64,8 @@ export function PrivateRoute({ children }) {
     );
   }
 
-  if (!student) {
-    window.location.href = "/login";
-    return null;
+  if (!student && !token) {
+    return <Navigate to="/login" replace />;
   }
 
   return children;
