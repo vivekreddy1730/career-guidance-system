@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.log
+*.pot
+*.pyc
+instance/
+.webassets-cache
+.tox/
+.coverage
+htmlcov/
+.pytest_cache/
+*.pkl
+*.joblib
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# Node / React
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+.DS_Store
+*.local
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Firebase
+*-service-account.json
+firebase-debug.log
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Uploads (local dev)
+backend/uploads/
+backend/ml/models/*.pkl
+backend/ml/models/*.joblib

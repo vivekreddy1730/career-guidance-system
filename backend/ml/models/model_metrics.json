@@ -1,0 +1,27 @@
+{
+  "RandomForest": {
+    "accuracy": 0.3884,
+    "f1": 0.388,
+    "precision": 0.3886,
+    "recall": 0.3884
+  },
+  "DecisionTree": {
+    "accuracy": 0.3896,
+    "f1": 0.3621,
+    "precision": 0.3965,
+    "recall": 0.3896
+  },
+  "KNN": {
+    "accuracy": 0.386,
+    "f1": 0.3858,
+    "precision": 0.3856,
+    "recall": 0.386
+  },
+  "XGBoost": {
+    "accuracy": 0.3968,
+    "f1": 0.3969,
+    "precision": 0.3977,
+    "recall": 0.3968
+  },
+  "best": "XGBoost"
+}
