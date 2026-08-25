@@ -21,8 +21,6 @@ instance/
 .coverage
 htmlcov/
 .pytest_cache/
-*.pkl
-*.joblib
 
 # Environment
 .env
@@ -59,5 +57,3 @@ Thumbs.db
 
 # Uploads (local dev)
 backend/uploads/
-backend/ml/models/*.pkl
-backend/ml/models/*.joblib
