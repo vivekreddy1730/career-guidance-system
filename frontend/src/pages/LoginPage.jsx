@@ -70,11 +70,14 @@ export default function LoginPage({ isRegister = false }) {
     setError("");
     setInfoMsg("");
 
-    if (!email || !email.includes("@")) {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    if (!cleanEmail || !cleanEmail.includes("@")) {
       setError("Please enter a valid email address.");
       return;
     }
-    if (!password || password.length < 6) {
+    if (!cleanPassword || cleanPassword.length < 6) {
       setError("Password must be at least 6 characters long.");
       return;
     }
@@ -84,25 +87,36 @@ export default function LoginPage({ isRegister = false }) {
 
       if (!isRegisterPage) {
         // Direct Login
-        const loginRes = await loginEmail({ email, password });
-        login(loginRes.data.access_token, loginRes.data.student);
-        navigate(loginRes.data.is_new_user ? "/profile" : "/dashboard");
-        return;
+        try {
+          const loginRes = await loginEmail({ email: cleanEmail, password: cleanPassword });
+          login(loginRes.data.access_token, loginRes.data.student);
+          navigate(loginRes.data.is_new_user ? "/profile" : "/dashboard");
+          return;
+        } catch (loginErr) {
+          const msg = loginErr.response?.data?.error || "";
+          if (loginErr.response?.status === 401 || msg.toLowerCase().includes("invalid")) {
+            setError("Invalid email or password. If this is your first time using the live website, please click 'Register' below to create your account.");
+          } else {
+            setError(msg || "Sign in failed. Please check your connection or click Register.");
+          }
+          return;
+        }
       }
 
       // Registration: Send real OTP to Gmail
-      const otpRes = await sendEmailOtp(email, "register");
+      const otpRes = await sendEmailOtp(cleanEmail, "register");
       if (otpRes.data.otp_sent) {
+        setEmail(cleanEmail);
         setEmailOtpStep("otp");
         setCountdown(60);
-        setInfoMsg(`Verification code sent to ${email}. Check your inbox!`);
+        setInfoMsg(`Verification code sent to ${cleanEmail}. Check your inbox!`);
       }
     } catch (err) {
       console.error("Email auth error:", err);
       setError(
         err.response?.data?.error ||
         err.response?.data?.message ||
-        "Authentication failed. Please check your credentials."
+        "Authentication failed. Please check your credentials or click Register."
       );
     } finally {
       setLoading(false);
@@ -568,6 +582,9 @@ export default function LoginPage({ isRegister = false }) {
                       placeholder="e.g. nanireddypvt@gmail.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck="false"
                       required
                     />
                   </div>
