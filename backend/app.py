@@ -36,7 +36,7 @@ def create_app(config_override=None):
     # ── Extensions ───────────────────────────────────────────────────────────
     CORS(
         app,
-        resources={r"/api/*": {"origins": cfg.CORS_ORIGINS}},
+        resources={r"/api/*": {"origins": "*"}},
         supports_credentials=True,
     )
     db.init_app(app)

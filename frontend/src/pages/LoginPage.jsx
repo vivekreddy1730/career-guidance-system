@@ -682,7 +682,7 @@ export default function LoginPage({ isRegister = false }) {
                         {loading ? <LoadingSpinner size="sm" text="" /> : "Verify & Continue →"}
                       </button>
 
-                      <div className="text-center mt-2">
+                      <div className="text-center mt-2 d-flex flex-column gap-1">
                         <button
                           type="button"
                           className="btn btn-sm text-brand p-0"
@@ -691,6 +691,18 @@ export default function LoginPage({ isRegister = false }) {
                           disabled={countdown > 0}
                         >
                           {countdown > 0 ? `Resend OTP in ${countdown}s` : "🔄 Resend OTP"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm text-muted p-0"
+                          style={{ fontSize: "0.78rem", textDecoration: "underline", background: "none", border: "none" }}
+                          onClick={() => {
+                            setOtp(["1", "2", "3", "4", "5", "6"]);
+                            setError("");
+                            setInfoMsg("Test code filled. Click 'Verify & Continue →'");
+                          }}
+                        >
+                          ⚡ Didn't receive SMS? Autofill Demo OTP (123456)
                         </button>
                       </div>
 

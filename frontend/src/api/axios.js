@@ -2,11 +2,14 @@ import axios from "axios";
 
 const getBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
-  // If in production or custom cloud URL specified (not localhost)
   if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
     return envUrl;
   }
-  // Otherwise use relative URL so Vite proxy forwards /api calls seamlessly on mobile & other laptops
+  // When running on Vercel, phone, or any production cloud domain
+  if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+    return "https://career-guidance-backend-j1iv.onrender.com";
+  }
+  // Local development fallback
   return "";
 };
 
