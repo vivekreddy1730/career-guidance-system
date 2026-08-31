@@ -25,17 +25,6 @@ export default function JobMarketPage() {
   const [trendLoading, setTrendLoading] = useState(true);
   const [chartType, setChartType] = useState("doughnut");
 
-  useEffect(() => {
-    getTrendingSkills()
-      .then((res) => setTrendingSkills(res.data.trending_skills))
-      .catch(() => {})
-      .finally(() => setTrendLoading(false));
-  }, []);
-
-  useEffect(() => {
-    fetchJobData(selectedCareer);
-  }, [selectedCareer]);
-
   const fetchJobData = async (career) => {
     setLoading(true);
     try {
@@ -43,7 +32,7 @@ export default function JobMarketPage() {
         getJobs(career),
         getSalaryInsights(career),
       ]);
-      setJobs(jobRes.data.jobs);
+      setJobs(jobRes.data.jobs || []);
       setSalary(salRes.data.salary_insights);
     } catch (err) {
       console.error("Job fetch failed:", err);
@@ -51,6 +40,17 @@ export default function JobMarketPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    getTrendingSkills()
+      .then((res) => setTrendingSkills(res.data.trending_skills || []))
+      .catch(() => {})
+      .finally(() => setTrendLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetchJobData(selectedCareer);
+  }, [selectedCareer]);
 
   return (
     <div style={{ background: "var(--bg-dark)", minHeight: "100vh" }}>

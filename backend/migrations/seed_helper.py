@@ -1,5 +1,5 @@
 """
-seed_helper.py — Auto-seeds SQLite / MySQL databases if empty.
+seed_helper.py — Auto-seeds and updates SQLite / MySQL databases with questions and skills.
 """
 import os
 import json
@@ -12,13 +12,15 @@ from models.assessment import AssessmentQuestion
 
 logger = logging.getLogger(__name__)
 
-def auto_seed():
-    """Seed base data if skills or careers are empty."""
-    try:
-        if Skill.query.first() is not None:
-            return  # Already seeded
 
-        logger.info("Database is empty. Auto-seeding initial data...")
+def auto_seed(force_questions: bool = False):
+    """Seed base data and ensure comprehensive question bank is loaded."""
+    try:
+        total_questions = AssessmentQuestion.query.count()
+        if total_questions >= 45 and not force_questions:
+            return  # Already has sufficient question bank
+
+        logger.info("Updating database reference data and questions...")
         seed_path = os.path.join(os.path.dirname(__file__), "seed_data.sql")
         if not os.path.exists(seed_path):
             return
@@ -37,7 +39,7 @@ def auto_seed():
                 logger.debug("Statement skipped: %s", e)
 
         db.session.commit()
-        logger.info("✅ Auto-seeding complete.")
+        logger.info("✅ Database seeded with %d questions.", AssessmentQuestion.query.count())
     except Exception as exc:
         db.session.rollback()
         logger.warning("Auto-seed encountered an issue: %s", exc)

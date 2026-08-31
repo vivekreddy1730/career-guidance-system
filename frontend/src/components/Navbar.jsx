@@ -4,10 +4,11 @@ import { useAuth } from "../context/AuthContext";
 
 const NAV_ITEMS = [
   { path: "/dashboard", icon: "⊞", label: "Dashboard" },
-  { path: "/profile",   icon: "👤", label: "Profile" },
   { path: "/assessment",icon: "📝", label: "Assessment" },
-  { path: "/results",   icon: "🎯", label: "Results" },
+  { path: "/results",   icon: "🎯", label: "Predictions" },
   { path: "/roadmap",   icon: "🗺️", label: "Roadmap" },
+  { path: "/interview", icon: "🎙️", label: "Mock Interview" },
+  { path: "/ats-scanner",icon: "📄", label: "ATS Scanner" },
   { path: "/jobs",      icon: "💼", label: "Job Market" },
   { path: "/chat",      icon: "🤖", label: "AI Advisor" },
 ];
@@ -39,7 +40,7 @@ export default function Navbar() {
 
         {/* Nav Links (desktop) */}
         {student && (
-          <div className="d-none d-lg-flex gap-1">
+          <div className="d-none d-xl-flex gap-1">
             {NAV_ITEMS.map(item => (
               <Link
                 key={item.path}
@@ -47,7 +48,7 @@ export default function Navbar() {
                 className="px-3 py-2 text-decoration-none rounded"
                 style={{
                   color: window.location.pathname === item.path ? "#6366f1" : "#94a3b8",
-                  fontSize: "0.875rem",
+                  fontSize: "0.85rem",
                   fontWeight: 500,
                   transition: "all 0.2s",
                   background: window.location.pathname === item.path ? "rgba(99,102,241,0.1)" : "transparent",
@@ -70,10 +71,10 @@ export default function Navbar() {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   color: "#fff", fontWeight: 700, fontSize: "0.875rem",
                 }}>
-                  {(student.name || student.phone || "S")[0].toUpperCase()}
+                  {(student.name || student.email || student.phone || "S")[0].toUpperCase()}
                 </div>
                 <span className="text-secondary d-none d-md-block" style={{ fontSize: "0.875rem" }}>
-                  {student.name || student.phone}
+                  {student.name || student.email || student.phone}
                 </span>
               </div>
               <button onClick={handleLogout} className="btn-outline-brand btn btn-sm">

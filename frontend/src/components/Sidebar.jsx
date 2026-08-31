@@ -7,6 +7,8 @@ const MENU = [
   { path: "/assessment",icon: "📝", label: "Assessment" },
   { path: "/results",   icon: "🎯", label: "Predictions" },
   { path: "/roadmap",   icon: "🗺️", label: "Roadmap" },
+  { path: "/interview", icon: "🎙️", label: "Mock Interview" },
+  { path: "/ats-scanner",icon: "📄", label: "ATS Scanner" },
   { path: "/jobs",      icon: "💼", label: "Job Market" },
   { path: "/chat",      icon: "🤖", label: "AI Advisor" },
 ];

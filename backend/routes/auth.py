@@ -1,11 +1,12 @@
 """
-routes/auth.py — OTP-based auth using Firebase ID Token verification.
-POST /api/auth/verify-otp  → issues JWT
-POST /api/auth/refresh     → refreshes JWT
-GET  /api/auth/me          → current user info
+routes/auth.py — Multi-method authentication:
+1. Email & Password (Register & Login)
+2. Google (Gmail) 1-Click Sign-In
+3. Mobile Phone Number + Real-Time OTP
+4. JWT token issuance and refresh
 """
 import logging
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify
 from flask_jwt_extended import (
     create_access_token,
     jwt_required,
@@ -19,32 +20,157 @@ logger = logging.getLogger(__name__)
 
 
 def _verify_firebase_token(id_token: str):
-    """Verify Firebase ID token. Returns decoded token or raises."""
+    """Verify Firebase ID token. Returns decoded token or None."""
     try:
         import firebase_admin.auth as firebase_auth
-        return firebase_admin.auth.verify_id_token(id_token)
+        return firebase_auth.verify_id_token(id_token)
     except Exception as e:
         logger.warning("Firebase token verification failed: %s", e)
         return None
 
 
 def _mock_verify(id_token: str):
-    """
-    Mock verification for dev/test when Firebase is not configured.
-    Accepts any token that starts with 'mock_' and extracts phone from it.
-    Format: mock_<phone>
-    """
+    """Fallback verification for dev/test environments."""
     if id_token.startswith("mock_"):
         phone = id_token.replace("mock_", "")
         return {"phone_number": phone or "+910000000000", "uid": f"mock_uid_{phone}"}
     return None
 
 
+@auth_bp.route("/register-email", methods=["POST"])
+def register_email():
+    """
+    Register with Email, Password, and optional Name/Phone.
+    Body: { "email": "...", "password": "...", "name": "...", "phone": "..." }
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+    name = data.get("name", "").strip()
+    phone = data.get("phone", "").strip()
+
+    if not email or "@" not in email:
+        return jsonify({"error": "A valid email address is required"}), 400
+    if not password or len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters long"}), 400
+
+    existing_email = Student.query.filter_by(email=email).first()
+    if existing_email:
+        return jsonify({"error": "An account with this email already exists. Please sign in."}), 400
+
+    if phone:
+        existing_phone = Student.query.filter_by(phone=phone).first()
+        if existing_phone:
+            return jsonify({"error": "This phone number is already registered."}), 400
+
+    student = Student(
+        email=email,
+        name=name or email.split("@")[0].capitalize(),
+        phone=phone or None,
+        auth_provider="email",
+    )
+    student.set_password(password)
+
+    db.session.add(student)
+    db.session.commit()
+    logger.info("New student registered via email: %s", email)
+
+    access_token = create_access_token(identity=str(student.id))
+    return jsonify({
+        "access_token": access_token,
+        "student": student.to_dict(),
+        "is_new_user": True,
+        "message": "Registration successful",
+    }), 201
+
+
+@auth_bp.route("/login-email", methods=["POST"])
+def login_email():
+    """
+    Sign in with Email and Password.
+    Body: { "email": "...", "password": "..." }
+    """
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    student = Student.query.filter_by(email=email).first()
+    if not student or not student.check_password(password):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    access_token = create_access_token(identity=str(student.id))
+    return jsonify({
+        "access_token": access_token,
+        "student": student.to_dict(),
+        "is_new_user": student.college is None and student.branch is None,
+        "message": "Login successful",
+    }), 200
+
+
+@auth_bp.route("/google-login", methods=["POST"])
+def google_login():
+    """
+    Sign in with Google (Gmail). Accepts Firebase Google ID token or user payload.
+    Body: { "id_token": "...", "email": "...", "name": "...", "uid": "..." }
+    """
+    data = request.get_json(silent=True) or {}
+    id_token = data.get("id_token", "")
+    email = data.get("email", "").strip().lower()
+    name = data.get("name", "").strip()
+    uid = data.get("uid", "")
+
+    decoded = None
+    if id_token and not id_token.startswith("mock_"):
+        decoded = _verify_firebase_token(id_token)
+
+    if decoded:
+        email = decoded.get("email", email)
+        name = decoded.get("name", name)
+        uid = decoded.get("uid", uid)
+
+    if not email:
+        return jsonify({"error": "Google account email is required"}), 400
+
+    # Look up by email or firebase_uid
+    student = Student.query.filter((Student.email == email) | (Student.firebase_uid == uid)).first()
+    is_new_user = False
+
+    if not student:
+        student = Student(
+            email=email,
+            name=name or email.split("@")[0].capitalize(),
+            firebase_uid=uid or f"google_{email}",
+            auth_provider="google",
+        )
+        db.session.add(student)
+        db.session.commit()
+        is_new_user = True
+        logger.info("New student registered via Google: %s", email)
+    else:
+        # Update name or uid if missing
+        if name and not student.name:
+            student.name = name
+        if uid and not student.firebase_uid:
+            student.firebase_uid = uid
+        db.session.commit()
+
+    access_token = create_access_token(identity=str(student.id))
+    return jsonify({
+        "access_token": access_token,
+        "student": student.to_dict(),
+        "is_new_user": is_new_user or (student.college is None and student.branch is None),
+        "message": "Google authentication successful",
+    }), 200
+
+
 @auth_bp.route("/verify-otp", methods=["POST"])
 def verify_otp():
     """
-    Body: { "id_token": "<Firebase ID token>" }
-    Returns: { "access_token": "...", "student": {...} }
+    Verify Mobile Phone OTP token (Firebase SMS or direct).
+    Body: { "id_token": "<Firebase ID token or mock_<phone>>" }
     """
     data = request.get_json(silent=True) or {}
     id_token = data.get("id_token", "").strip()
@@ -52,12 +178,10 @@ def verify_otp():
     if not id_token:
         return jsonify({"error": "id_token is required"}), 400
 
-    # Try real Firebase verification first
     decoded = None
     if not id_token.startswith("mock_"):
         decoded = _verify_firebase_token(id_token)
 
-    # Fall back to mock token for test numbers or dev environments
     if decoded is None:
         decoded = _mock_verify(id_token)
 
@@ -70,21 +194,21 @@ def verify_otp():
     if not phone:
         return jsonify({"error": "Phone number not found in token"}), 400
 
-    # Get or create student
     student = Student.query.filter_by(phone=phone).first()
+    is_new_user = False
+
     if not student:
-        student = Student(phone=phone, firebase_uid=firebase_uid)
+        student = Student(phone=phone, firebase_uid=firebase_uid, auth_provider="phone")
         db.session.add(student)
         db.session.commit()
-        logger.info("New student registered: %s", phone)
+        is_new_user = True
+        logger.info("New student registered via Phone OTP: %s", phone)
 
-    # Issue JWT (identity must be a string for flask-jwt-extended ≥4.7)
     access_token = create_access_token(identity=str(student.id))
-
     return jsonify({
         "access_token": access_token,
         "student": student.to_dict(),
-        "is_new_user": student.name is None,
+        "is_new_user": is_new_user or student.name is None,
     }), 200
 
 

@@ -36,7 +36,7 @@ def create_app(config_override=None):
     # ── Extensions ───────────────────────────────────────────────────────────
     CORS(
         app,
-        resources={r"/api/*": {"origins": app.config["FRONTEND_URL"]}},
+        resources={r"/api/*": {"origins": cfg.CORS_ORIGINS}},
         supports_credentials=True,
     )
     db.init_app(app)
@@ -52,6 +52,8 @@ def create_app(config_override=None):
     from routes.roadmap import roadmap_bp
     from routes.jobs import jobs_bp
     from routes.chat import chat_bp
+    from routes.interview import interview_bp
+    from routes.ats import ats_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(profile_bp, url_prefix="/api/profile")
@@ -60,6 +62,8 @@ def create_app(config_override=None):
     app.register_blueprint(roadmap_bp, url_prefix="/api/roadmap")
     app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
     app.register_blueprint(chat_bp, url_prefix="/api/chat")
+    app.register_blueprint(interview_bp, url_prefix="/api/interview")
+    app.register_blueprint(ats_bp, url_prefix="/api/ats")
 
     # ── Health check ─────────────────────────────────────────────────────────
     @app.route("/api/health")

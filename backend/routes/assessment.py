@@ -1,11 +1,12 @@
 """
 routes/assessment.py — Aptitude + technical assessment endpoints.
-GET  /api/assessment/questions → paginated question bank
+GET  /api/assessment/questions → balanced, randomized question set
 POST /api/assessment/start     → create assessment session
 POST /api/assessment/submit    → submit answers, compute score report
 GET  /api/assessment/report    → fetch latest completed report
 """
 import json
+import random
 import logging
 from datetime import datetime
 from flask import Blueprint, request, jsonify
@@ -23,33 +24,50 @@ logger = logging.getLogger(__name__)
 @jwt_required()
 def get_questions():
     section = request.args.get("section")  # aptitude | technical | None (all)
-    page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 50))
+    randomize = request.args.get("randomize", "true").lower() == "true"
 
-    query = AssessmentQuestion.query
     if section:
-        query = query.filter_by(section=section)
+        items = AssessmentQuestion.query.filter_by(section=section).all()
+        if randomize:
+            random.shuffle(items)
+        selected = items[:25]
+    else:
+        # Balanced sampling: 8 aptitude + 16 technical covering multiple domains
+        apt_items = AssessmentQuestion.query.filter_by(section="aptitude").all()
+        tech_items = AssessmentQuestion.query.filter_by(section="technical").all()
 
-    paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+        if randomize:
+            random.shuffle(apt_items)
+            random.shuffle(tech_items)
+
+        # Select a diverse set: up to 8 aptitude and up to 16 technical
+        selected_apt = apt_items[:8] if len(apt_items) >= 8 else apt_items
+        selected_tech = tech_items[:16] if len(tech_items) >= 16 else tech_items
+        selected = selected_apt + selected_tech
 
     questions_out = []
-    for q in paginated.items:
+    for q in selected:
+        try:
+            opts = json.loads(q.options) if isinstance(q.options, str) else q.options
+        except Exception:
+            opts = ["Option A", "Option B", "Option C", "Option D"]
+
         questions_out.append({
             "id": q.id,
             "section": q.section,
             "sub_section": q.sub_section,
             "question_text": q.question_text,
-            "options": json.loads(q.options),
+            "options": opts,
             "difficulty": q.difficulty,
             "skill_tag": q.skill_tag,
-            # NOTE: correct_index is NOT returned to frontend
+            # correct_index is kept secure on server
         })
 
     return jsonify({
         "questions": questions_out,
-        "total": paginated.total,
-        "page": page,
-        "pages": paginated.pages,
+        "total": len(questions_out),
+        "page": 1,
+        "pages": 1,
     }), 200
 
 
@@ -58,13 +76,7 @@ def get_questions():
 def start_assessment():
     student_id = int(get_jwt_identity())
 
-    # Check for existing in-progress assessment
-    existing = Assessment.query.filter_by(
-        student_id=student_id, status="in_progress"
-    ).first()
-    if existing:
-        return jsonify({"assessment_id": existing.id, "message": "Resuming existing assessment"}), 200
-
+    # Create a fresh assessment attempt
     assessment = Assessment(student_id=student_id, status="in_progress")
     db.session.add(assessment)
     db.session.commit()
@@ -95,9 +107,6 @@ def submit_assessment():
     if not assessment:
         return jsonify({"error": "Assessment not found"}), 404
 
-    if assessment.status == "completed":
-        return jsonify({"error": "Assessment already completed", "report": assessment.to_dict()}), 400
-
     # Score responses
     skill_scores: dict = {}   # skill_tag → [correct, total]
 
@@ -127,7 +136,7 @@ def submit_assessment():
             )
             db.session.add(ar)
 
-        # Accumulate skill scores
+        # Accumulate skill scores by specific skill_tag
         tag = question.skill_tag or question.sub_section or question.section
         if tag not in skill_scores:
             skill_scores[tag] = [0, 0]
@@ -135,7 +144,7 @@ def submit_assessment():
         if is_correct:
             skill_scores[tag][0] += 1
 
-    # Build score report: skill → 0-100
+    # Build score report: skill → 0-100%
     score_report = {
         tag: round(correct / total * 100)
         for tag, (correct, total) in skill_scores.items()
@@ -151,7 +160,7 @@ def submit_assessment():
     assessment.status = "completed"
     assessment.completed_at = datetime.utcnow()
 
-    # Update student skills from assessment
+    # Update student skills in DB from assessment performance
     for skill_name, score in score_report.items():
         skill = Skill.query.filter(Skill.name.ilike(skill_name)).first()
         if not skill:

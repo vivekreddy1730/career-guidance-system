@@ -60,8 +60,14 @@ class Config:
     # JSearch
     JSEARCH_API_KEY = os.environ.get("JSEARCH_API_KEY", "")
 
-    # CORS
+    # CORS — comma-separated origins allowed (e.g. "http://localhost:5173,https://myapp.vercel.app")
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+
+    @property
+    def CORS_ORIGINS(self):
+        """Return list of allowed origins for CORS."""
+        origins = [o.strip() for o in self.FRONTEND_URL.split(",") if o.strip()]
+        return origins if origins else ["http://localhost:5173"]
 
     # ML
     ML_MODELS_DIR = os.path.join(os.path.dirname(__file__), "ml", "models")

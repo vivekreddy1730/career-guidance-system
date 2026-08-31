@@ -106,7 +106,7 @@ def build_feature_vector(student_data: dict, training_columns: list) -> np.ndarr
     resume_score = float(student_data.get("resume_score") or student_data.get("Resume_Score") or 85)
     teamwork = float(student_data.get("teamwork") or student_data.get("Teamwork") or 80)
 
-    student_major = str(student_data.get("branch") or student_data.get("major") or student_data.get("Major") or "Computer Science")
+    student_major = str(student_data.get("Major") or student_data.get("major") or student_data.get("branch") or "Computer Science")
 
     # Map features
     sample_df = pd.DataFrame([{

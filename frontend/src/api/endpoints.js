@@ -4,6 +4,15 @@ import api from "./axios";
 export const verifyOtp = (idToken) =>
   api.post("/api/auth/verify-otp", { id_token: idToken });
 
+export const registerEmail = (data) =>
+  api.post("/api/auth/register-email", data);
+
+export const loginEmail = (data) =>
+  api.post("/api/auth/login-email", data);
+
+export const googleLogin = (data) =>
+  api.post("/api/auth/google-login", data);
+
 export const getMe = () => api.get("/api/auth/me");
 
 // ── Profile ───────────────────────────────────────────────────────────────────
@@ -54,3 +63,17 @@ export const sendMessage = (message, sessionId) =>
 export const getChatHistory = (sessionId) =>
   api.get("/api/chat/history", { params: { session_id: sessionId } });
 export const clearChatHistory = () => api.delete("/api/chat/history");
+
+// ── Mock Technical Interviewer ────────────────────────────────────────────────
+export const getInterviewQuestions = (career) =>
+  api.get("/api/interview/questions", { params: { career } });
+export const evaluateInterviewAnswer = (data) =>
+  api.post("/api/interview/evaluate", data);
+export const saveInterviewSession = (data) =>
+  api.post("/api/interview/save", data);
+
+// ── ATS Resume Scanner & Optimizer ────────────────────────────────────────────
+export const scanResumeAts = (career, resumeText = "") =>
+  api.post("/api/ats/scan", { career, resume_text: resumeText });
+export const optimizeAtsBullet = (bulletText, targetRole) =>
+  api.post("/api/ats/optimize-bullet", { bullet_text: bulletText, target_role: targetRole });

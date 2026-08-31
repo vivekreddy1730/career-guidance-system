@@ -12,6 +12,8 @@ import ResultsPage from "./pages/ResultsPage";
 import RoadmapPage from "./pages/RoadmapPage";
 import JobMarketPage from "./pages/JobMarketPage";
 import ChatbotPage from "./pages/ChatbotPage";
+import MockInterviewPage from "./pages/MockInterviewPage";
+import AtsScannerPage from "./pages/AtsScannerPage";
 
 export default function App() {
   return (
@@ -28,6 +30,8 @@ export default function App() {
       <Route path="/results" element={<PrivateRoute><ResultsPage /></PrivateRoute>} />
       <Route path="/roadmap" element={<PrivateRoute><RoadmapPage /></PrivateRoute>} />
       <Route path="/jobs" element={<PrivateRoute><JobMarketPage /></PrivateRoute>} />
+      <Route path="/interview" element={<PrivateRoute><MockInterviewPage /></PrivateRoute>} />
+      <Route path="/ats-scanner" element={<PrivateRoute><AtsScannerPage /></PrivateRoute>} />
       <Route path="/chat" element={<PrivateRoute><ChatbotPage /></PrivateRoute>} />
 
       {/* Fallback */}

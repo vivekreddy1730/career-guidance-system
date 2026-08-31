@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
 const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
 const isConfigured = Boolean(apiKey && !apiKey.includes("your-firebase-api-key") && apiKey.trim().length > 10);
@@ -15,15 +15,17 @@ const firebaseConfig = isConfigured ? {
 
 let app = null;
 let auth = null;
+let googleProvider = null;
 
 if (firebaseConfig) {
   try {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
     auth = getAuth(app);
+    googleProvider = new GoogleAuthProvider();
   } catch (err) {
-    console.warn("Firebase initialization warning (using mock mode):", err);
+    console.warn("Firebase initialization warning:", err);
   }
 }
 
-export { auth, isConfigured };
+export { auth, googleProvider, signInWithPopup, GoogleAuthProvider, isConfigured };
 export default app;

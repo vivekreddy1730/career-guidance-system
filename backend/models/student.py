@@ -1,13 +1,16 @@
 from extensions import db
 from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 class Student(db.Model):
     __tablename__ = "students"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    phone = db.Column(db.String(20), unique=True, nullable=False, index=True)
-    email = db.Column(db.String(120), unique=True, nullable=True)
+    phone = db.Column(db.String(50), unique=True, nullable=True, index=True)
+    email = db.Column(db.String(120), unique=True, nullable=True, index=True)
+    password_hash = db.Column(db.String(255), nullable=True)
+    auth_provider = db.Column(db.String(50), default="phone")  # phone | email | google
     name = db.Column(db.String(100), nullable=True)
     college = db.Column(db.String(200), nullable=True)
     branch = db.Column(db.String(100), nullable=True)
@@ -25,6 +28,14 @@ class Student(db.Model):
     assessments = db.relationship("Assessment", back_populates="student", cascade="all, delete-orphan")
     roadmaps = db.relationship("Roadmap", back_populates="student", cascade="all, delete-orphan")
 
+    def set_password(self, password: str):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        if not self.password_hash:
+            return False
+        return check_password_hash(self.password_hash, password)
+
     def get_interests(self):
         import json
         if not self.interests:
@@ -41,6 +52,7 @@ class Student(db.Model):
             "id": self.id,
             "phone": self.phone,
             "email": self.email,
+            "auth_provider": self.auth_provider,
             "name": self.name,
             "college": self.college,
             "branch": self.branch,
