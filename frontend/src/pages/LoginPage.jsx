@@ -219,8 +219,12 @@ export default function LoginPage({ isRegister = false }) {
       console.error("Google sign-in error:", err);
       if (err.code === "auth/popup-closed-by-user") {
         setError("Google sign-in popup was closed.");
+      } else if (err.code === "auth/operation-not-allowed") {
+        setError("Google Sign-In is being configured. Please use Email & Password or Mobile OTP to sign in.");
+      } else if (err.code === "auth/unauthorized-domain") {
+        setError("This domain is not authorized for Google Sign-In. Please use Email & Password.");
       } else {
-        setError(err.response?.data?.error || err.message || "Google authentication failed.");
+        setError(err.response?.data?.error || err.message || "Google authentication failed. Try Email & Password instead.");
       }
     } finally {
       setLoading(false);
