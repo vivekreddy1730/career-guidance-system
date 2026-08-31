@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { PrivateRoute } from "./context/AuthContext";
+import api from "./api/axios";
 
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
@@ -16,6 +17,11 @@ import MockInterviewPage from "./pages/MockInterviewPage";
 import AtsScannerPage from "./pages/AtsScannerPage";
 
 export default function App() {
+  // Pre-warm Render backend on initial page load
+  useEffect(() => {
+    api.get("/api/health").catch(() => {});
+  }, []);
+
   return (
     <Routes>
       {/* Public routes */}

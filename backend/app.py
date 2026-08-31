@@ -36,8 +36,13 @@ def create_app(config_override=None):
     # ── Extensions ───────────────────────────────────────────────────────────
     CORS(
         app,
-        resources={r"/api/*": {"origins": "*"}},
-        supports_credentials=True,
+        resources={
+            r"/api/*": {
+                "origins": "*",
+                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+            }
+        },
     )
     db.init_app(app)
     jwt.init_app(app)
