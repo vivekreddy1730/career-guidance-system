@@ -204,6 +204,72 @@ def verify_phone_otp_route():
     }), 200
 
 
+# ── Forgot & Reset Password via Real Email OTP ──────────────────────────────
+@auth_bp.route("/forgot-password-otp", methods=["POST"])
+def forgot_password_otp():
+    """
+    Send a 6-digit password reset OTP to student's email address.
+    Body: { "email": "..." }
+    """
+    from services.otp_service import create_otp, send_email_otp
+
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+
+    if not email or "@" not in email:
+        return jsonify({"error": "Please enter a valid email address."}), 400
+
+    student = Student.query.filter_by(email=email).first()
+    if not student:
+        return jsonify({"error": "No student account found with this email address."}), 404
+
+    otp_code = create_otp(email)
+    sent = send_email_otp(email, otp_code)
+
+    return jsonify({
+        "message": f"Password reset OTP sent to {email}. Check your inbox.",
+        "otp_sent": True,
+    }), 200
+
+
+@auth_bp.route("/reset-password", methods=["POST"])
+def reset_password():
+    """
+    Verify OTP and reset student's account password.
+    Body: { "email": "...", "otp": "...", "new_password": "..." }
+    """
+    from services.otp_service import verify_otp as verify_otp_code
+
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    otp = data.get("otp", "").strip()
+    new_password = data.get("new_password", "")
+
+    if not email or not otp or not new_password:
+        return jsonify({"error": "Email, OTP code, and new password are required."}), 400
+
+    if len(new_password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters long."}), 400
+
+    if not verify_otp_code(email, otp):
+        return jsonify({"error": "Invalid or expired OTP code. Please request a new one."}), 401
+
+    student = Student.query.filter_by(email=email).first()
+    if not student:
+        return jsonify({"error": "Account not found."}), 404
+
+    student.set_password(new_password)
+    db.session.commit()
+    logger.info("Password successfully reset for: %s", email)
+
+    access_token = create_access_token(identity=str(student.id))
+    return jsonify({
+        "access_token": access_token,
+        "student": student.to_dict(),
+        "message": "Password reset successful! You are now logged in.",
+    }), 200
+
+
 # ── Legacy endpoints (kept for backward compatibility) ───────────────────────
 
 @auth_bp.route("/register-email", methods=["POST"])

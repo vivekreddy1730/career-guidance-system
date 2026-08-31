@@ -26,6 +26,12 @@ export const sendPhoneOtp = (phone) =>
 export const verifyPhoneOtp = (phone, otp) =>
   api.post("/api/auth/verify-phone-otp", { phone, otp });
 
+export const sendForgotPasswordOtp = (email) =>
+  api.post("/api/auth/forgot-password-otp", { email });
+
+export const resetPassword = (data) =>
+  api.post("/api/auth/reset-password", data);
+
 export const getMe = () => api.get("/api/auth/me");
 
 // ── Profile ───────────────────────────────────────────────────────────────────
