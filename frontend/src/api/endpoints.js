@@ -13,6 +13,19 @@ export const loginEmail = (data) =>
 export const googleLogin = (data) =>
   api.post("/api/auth/google-login", data);
 
+// Real-time OTP endpoints
+export const sendEmailOtp = (email, purpose = "login") =>
+  api.post("/api/auth/send-email-otp", { email, purpose });
+
+export const verifyEmailOtp = (data) =>
+  api.post("/api/auth/verify-email-otp", data);
+
+export const sendPhoneOtp = (phone) =>
+  api.post("/api/auth/send-phone-otp", { phone });
+
+export const verifyPhoneOtp = (phone, otp) =>
+  api.post("/api/auth/verify-phone-otp", { phone, otp });
+
 export const getMe = () => api.get("/api/auth/me");
 
 // ── Profile ───────────────────────────────────────────────────────────────────

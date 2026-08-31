@@ -1,12 +1,12 @@
 """
 routes/auth.py — Multi-method authentication:
-1. Email & Password (Register & Login)
+1. Email & Password (Register & Login) with Email OTP verification
 2. Google (Gmail) 1-Click Sign-In
-3. Mobile Phone Number + Real-Time OTP
+3. Mobile Phone Number + Real-Time OTP (Firebase SMS + backend fallback)
 4. JWT token issuance and refresh
 """
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import (
     create_access_token,
     jwt_required,
@@ -36,6 +36,175 @@ def _mock_verify(id_token: str):
         return {"phone_number": phone or "+910000000000", "uid": f"mock_uid_{phone}"}
     return None
 
+
+# ── Email OTP: Send ──────────────────────────────────────────────────────────
+@auth_bp.route("/send-email-otp", methods=["POST"])
+def send_email_otp_route():
+    """
+    Send a real 6-digit OTP to the user's email address.
+    Body: { "email": "...", "purpose": "register" | "login" }
+    """
+    from services.otp_service import create_otp, send_email_otp
+
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    purpose = data.get("purpose", "login")
+
+    if not email or "@" not in email:
+        return jsonify({"error": "A valid email address is required"}), 400
+
+    # For registration, check if email already exists
+    if purpose == "register":
+        existing = Student.query.filter_by(email=email).first()
+        if existing:
+            return jsonify({"error": "An account with this email already exists. Please sign in."}), 400
+
+    # For login, check if email exists
+    if purpose == "login":
+        existing = Student.query.filter_by(email=email).first()
+        if not existing:
+            return jsonify({"error": "No account found with this email. Please register first."}), 404
+
+    otp_code = create_otp(email)
+    sent = send_email_otp(email, otp_code)
+
+    if sent:
+        return jsonify({
+            "message": f"OTP sent to {email}. Check your inbox (and spam folder).",
+            "otp_sent": True,
+        }), 200
+    else:
+        return jsonify({
+            "error": "Failed to send OTP email. Please try again.",
+            "otp_sent": False,
+        }), 500
+
+
+# ── Email OTP: Verify ────────────────────────────────────────────────────────
+@auth_bp.route("/verify-email-otp", methods=["POST"])
+def verify_email_otp_route():
+    """
+    Verify the 6-digit OTP sent to email and authenticate.
+    Body: { "email": "...", "otp": "123456", "purpose": "register" | "login", "name": "...", "password": "..." }
+    """
+    from services.otp_service import verify_otp as verify_otp_code
+
+    data = request.get_json(silent=True) or {}
+    email = data.get("email", "").strip().lower()
+    otp = data.get("otp", "").strip()
+    purpose = data.get("purpose", "login")
+    name = data.get("name", "").strip()
+    password = data.get("password", "")
+
+    if not email or not otp:
+        return jsonify({"error": "Email and OTP are required"}), 400
+
+    if len(otp) != 6:
+        return jsonify({"error": "OTP must be 6 digits"}), 400
+
+    # Verify the OTP
+    if not verify_otp_code(email, otp):
+        return jsonify({"error": "Invalid or expired OTP. Please try again."}), 401
+
+    # OTP is valid — proceed with auth
+    student = Student.query.filter_by(email=email).first()
+    is_new_user = False
+
+    if purpose == "register" and not student:
+        if not password or len(password) < 6:
+            return jsonify({"error": "Password must be at least 6 characters"}), 400
+
+        student = Student(
+            email=email,
+            name=name or email.split("@")[0].capitalize(),
+            auth_provider="email",
+        )
+        student.set_password(password)
+        db.session.add(student)
+        db.session.commit()
+        is_new_user = True
+        logger.info("New student registered via verified email OTP: %s", email)
+    elif not student:
+        return jsonify({"error": "No account found. Please register first."}), 404
+
+    access_token = create_access_token(identity=str(student.id))
+    return jsonify({
+        "access_token": access_token,
+        "student": student.to_dict(),
+        "is_new_user": is_new_user or (student.college is None and student.branch is None),
+        "message": "Email verified successfully!",
+        "verified": True,
+    }), 200
+
+
+# ── Phone OTP: Send (Backend fallback) ───────────────────────────────────────
+@auth_bp.route("/send-phone-otp", methods=["POST"])
+def send_phone_otp_route():
+    """
+    Generate a 6-digit OTP for phone verification (backend-managed).
+    Firebase handles SMS on frontend; this is a fallback for when Firebase SMS fails.
+    Body: { "phone": "+91XXXXXXXXXX" }
+    """
+    from services.otp_service import create_otp, send_phone_otp
+
+    data = request.get_json(silent=True) or {}
+    phone = data.get("phone", "").strip()
+
+    if not phone or len(phone.replace("+", "").replace(" ", "")) < 10:
+        return jsonify({"error": "A valid phone number is required"}), 400
+
+    otp_code = create_otp(phone)
+    send_phone_otp(phone, otp_code)
+
+    return jsonify({
+        "message": f"OTP generated for {phone}.",
+        "otp_sent": True,
+    }), 200
+
+
+# ── Phone OTP: Verify (Backend fallback) ─────────────────────────────────────
+@auth_bp.route("/verify-phone-otp", methods=["POST"])
+def verify_phone_otp_route():
+    """
+    Verify phone OTP via backend store (when Firebase SMS doesn't work).
+    Body: { "phone": "+91XXXXXXXXXX", "otp": "123456" }
+    """
+    from services.otp_service import verify_otp as verify_otp_code
+
+    data = request.get_json(silent=True) or {}
+    phone = data.get("phone", "").strip()
+    otp = data.get("otp", "").strip()
+
+    if not phone or not otp:
+        return jsonify({"error": "Phone and OTP are required"}), 400
+
+    if not verify_otp_code(phone, otp):
+        return jsonify({"error": "Invalid or expired OTP"}), 401
+
+    # OTP verified — create or find student
+    student = Student.query.filter_by(phone=phone).first()
+    is_new_user = False
+
+    if not student:
+        student = Student(
+            phone=phone,
+            auth_provider="phone",
+        )
+        db.session.add(student)
+        db.session.commit()
+        is_new_user = True
+        logger.info("New student registered via verified phone OTP: %s", phone)
+
+    access_token = create_access_token(identity=str(student.id))
+    return jsonify({
+        "access_token": access_token,
+        "student": student.to_dict(),
+        "is_new_user": is_new_user or student.name is None,
+        "verified": True,
+    }), 200
+
+
+# ── Legacy endpoints (kept for backward compatibility) ───────────────────────
 
 @auth_bp.route("/register-email", methods=["POST"])
 def register_email():

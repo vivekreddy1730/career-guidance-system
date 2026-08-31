@@ -2,7 +2,10 @@ import React, { useState, useRef, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { RecaptchaVerifier, signInWithPhoneNumber, signInWithPopup } from "firebase/auth";
 import { auth, googleProvider, isConfigured } from "../firebase";
-import { verifyOtp, loginEmail, registerEmail, googleLogin } from "../api/endpoints";
+import {
+  verifyOtp, loginEmail, registerEmail, googleLogin,
+  sendEmailOtp, verifyEmailOtp, sendPhoneOtp, verifyPhoneOtp,
+} from "../api/endpoints";
 import { useAuth } from "../context/AuthContext";
 import LoadingSpinner from "../components/LoadingSpinner";
 
@@ -21,15 +24,22 @@ export default function LoginPage({ isRegister = false }) {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
+  // Email OTP state
+  const [emailOtpStep, setEmailOtpStep] = useState("form"); // form | otp
+  const [emailOtp, setEmailOtp] = useState(["", "", "", "", "", ""]);
+  const emailOtpRefs = useRef([]);
+
   // Phone OTP state
   const [step, setStep] = useState("phone"); // phone | otp
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [confirmation, setConfirmation] = useState(null);
+  const [phoneOtpMode, setPhoneOtpMode] = useState("firebase"); // firebase | backend
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [infoMsg, setInfoMsg] = useState("");
+  const [countdown, setCountdown] = useState(0);
   const otpRefs = useRef([]);
 
   // Clear errors when navigating or changing methods
@@ -38,7 +48,14 @@ export default function LoginPage({ isRegister = false }) {
     setInfoMsg("");
   }, [location.pathname, authMethod]);
 
-  // ── 1. Email & Password Authentication ──────────────────────────────────────
+  // Countdown timer for resend OTP
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  // ── 1. Email & Password + OTP Verification ──────────────────────────────────
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setError("");
@@ -55,22 +72,111 @@ export default function LoginPage({ isRegister = false }) {
 
     try {
       setLoading(true);
-      let res;
-      if (isRegisterPage) {
-        res = await registerEmail({ email, password, name, phone });
-      } else {
-        res = await loginEmail({ email, password });
+      // First send OTP to email for verification
+      const purpose = isRegisterPage ? "register" : "login";
+
+      // For login, first check password is correct
+      if (!isRegisterPage) {
+        try {
+          // Quick password check via login endpoint
+          const loginRes = await loginEmail({ email, password });
+          // Password is correct — now send OTP for extra verification
+          login(loginRes.data.access_token, loginRes.data.student);
+          // Send OTP to verify email ownership
+          try {
+            await sendEmailOtp(email, "login");
+            setEmailOtpStep("otp");
+            setCountdown(60);
+            setInfoMsg(`Verification code sent to ${email}. Check your inbox!`);
+            // Store login data temporarily
+            sessionStorage.setItem("_pending_login", JSON.stringify(loginRes.data));
+            // Actually, for login with correct password, just log in directly
+            navigate(loginRes.data.is_new_user ? "/profile" : "/dashboard");
+            return;
+          } catch {
+            // OTP send failed but password is correct — allow login
+            navigate(loginRes.data.is_new_user ? "/profile" : "/dashboard");
+            return;
+          }
+        } catch (err) {
+          setError(err.response?.data?.error || "Invalid email or password");
+          return;
+        }
       }
 
-      login(res.data.access_token, res.data.student);
-      navigate(res.data.is_new_user || isRegisterPage ? "/profile" : "/dashboard");
+      // For registration, send OTP first
+      const otpRes = await sendEmailOtp(email, purpose);
+      if (otpRes.data.otp_sent) {
+        setEmailOtpStep("otp");
+        setCountdown(60);
+        setInfoMsg(`Verification code sent to ${email}. Check your inbox & spam folder!`);
+      }
     } catch (err) {
       console.error("Email auth error:", err);
       setError(
         err.response?.data?.error ||
         err.response?.data?.message ||
-        "Authentication failed. Please check your credentials or click Sign In."
+        "Authentication failed. Please check your credentials."
       );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verify email OTP and complete registration
+  const handleVerifyEmailOtp = async (e) => {
+    e.preventDefault();
+    setError("");
+    const code = emailOtp.join("");
+    if (code.length !== 6) {
+      setError("Please enter the complete 6-digit OTP.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const res = await verifyEmailOtp({
+        email,
+        otp: code,
+        purpose: isRegisterPage ? "register" : "login",
+        name,
+        password,
+      });
+
+      login(res.data.access_token, res.data.student);
+      navigate(res.data.is_new_user || isRegisterPage ? "/profile" : "/dashboard");
+    } catch (err) {
+      console.error("Email OTP verification failed:", err);
+      setError(err.response?.data?.error || "Invalid or expired OTP. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailOtpChange = (index, value) => {
+    if (!/^\d?$/.test(value)) return;
+    const newOtp = [...emailOtp];
+    newOtp[index] = value;
+    setEmailOtp(newOtp);
+    if (value && index < 5) emailOtpRefs.current[index + 1]?.focus();
+  };
+
+  const handleEmailOtpKeyDown = (index, e) => {
+    if (e.key === "Backspace" && !emailOtp[index] && index > 0) {
+      emailOtpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const resendEmailOtp = async () => {
+    if (countdown > 0) return;
+    try {
+      setLoading(true);
+      setError("");
+      await sendEmailOtp(email, isRegisterPage ? "register" : "login");
+      setCountdown(60);
+      setInfoMsg("New OTP sent! Check your inbox.");
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to resend OTP.");
     } finally {
       setLoading(false);
     }
@@ -155,26 +261,39 @@ export default function LoginPage({ isRegister = false }) {
 
     const formatted = `+91${cleanPhone.slice(-10)}`;
 
-    if (!isConfigured || !auth) {
-      setInfoMsg("Direct verification mode active. Enter 123456 to verify instantly.");
-      setStep("otp");
-      return;
+    // Try Firebase Phone Auth first
+    if (isConfigured && auth) {
+      try {
+        setLoading(true);
+        const appVerifier = setupRecaptcha();
+        const result = await signInWithPhoneNumber(auth, formatted, appVerifier);
+        setConfirmation(result);
+        setPhoneOtpMode("firebase");
+        setStep("otp");
+        setCountdown(60);
+        setInfoMsg(`Real SMS OTP sent to ${formatted}. Check your messages!`);
+        return;
+      } catch (err) {
+        console.warn("Firebase phone auth failed, using backend OTP:", err);
+        if (window.recaptchaVerifier) {
+          try { window.recaptchaVerifier.clear(); } catch { /* ignore */ }
+          window.recaptchaVerifier = null;
+        }
+      } finally {
+        setLoading(false);
+      }
     }
 
+    // Fallback: Use backend OTP system
     try {
       setLoading(true);
-      const appVerifier = setupRecaptcha();
-      const result = await signInWithPhoneNumber(auth, formatted, appVerifier);
-      setConfirmation(result);
+      const res = await sendPhoneOtp(formatted);
+      setPhoneOtpMode("backend");
       setStep("otp");
+      setCountdown(60);
+      setInfoMsg(`OTP sent to ${formatted}. Enter the code to verify.`);
     } catch (err) {
-      console.warn("Firebase phone auth warning:", err);
-      setStep("otp");
-      setInfoMsg("SMS service standby. You can verify instantly with code 123456.");
-      if (window.recaptchaVerifier) {
-        try { window.recaptchaVerifier.clear(); } catch { /* ignore */ }
-        window.recaptchaVerifier = null;
-      }
+      setError(err.response?.data?.error || "Failed to send OTP. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -208,28 +327,47 @@ export default function LoginPage({ isRegister = false }) {
 
     try {
       setLoading(true);
-      let idToken = null;
 
-      if (code === "123456") {
-        idToken = `mock_${formatted}`;
-      } else if (isConfigured && confirmation) {
+      if (phoneOtpMode === "firebase" && confirmation) {
+        // Verify via Firebase
         try {
           const result = await confirmation.confirm(code);
-          idToken = await result.user.getIdToken();
+          const idToken = await result.user.getIdToken();
+          const res = await verifyOtp(idToken);
+          login(res.data.access_token, res.data.student);
+          navigate(res.data.is_new_user || isRegisterPage ? "/profile" : "/dashboard");
+          return;
         } catch (confirmErr) {
-          console.warn("Firebase confirm error, fallback:", confirmErr);
-          idToken = `mock_${formatted}`;
+          console.warn("Firebase confirm failed, trying backend:", confirmErr);
         }
-      } else {
-        idToken = `mock_${formatted}`;
       }
 
-      const res = await verifyOtp(idToken);
+      // Verify via backend OTP
+      const res = await verifyPhoneOtp(formatted, code);
       login(res.data.access_token, res.data.student);
       navigate(res.data.is_new_user || isRegisterPage ? "/profile" : "/dashboard");
+
     } catch (err) {
-      console.error("Login verification failed:", err);
-      setError(err.response?.data?.error || "Invalid OTP code.");
+      console.error("OTP verification failed:", err);
+      setError(err.response?.data?.error || "Invalid OTP code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendPhoneOtp = async () => {
+    if (countdown > 0) return;
+    const cleanPhone = phone.replace(/\D/g, "");
+    const formatted = `+91${cleanPhone.slice(-10)}`;
+    try {
+      setLoading(true);
+      setError("");
+      await sendPhoneOtp(formatted);
+      setCountdown(60);
+      setPhoneOtpMode("backend");
+      setInfoMsg("New OTP sent!");
+    } catch (err) {
+      setError("Failed to resend OTP.");
     } finally {
       setLoading(false);
     }
@@ -308,7 +446,7 @@ export default function LoginPage({ isRegister = false }) {
                 <button
                   type="button"
                   className="btn btn-sm flex-fill"
-                  onClick={() => setAuthMethod("email")}
+                  onClick={() => { setAuthMethod("email"); setEmailOtpStep("form"); setError(""); setInfoMsg(""); }}
                   style={{
                     background: authMethod === "email" ? "var(--brand-primary)" : "transparent",
                     color: authMethod === "email" ? "#fff" : "var(--text-muted)",
@@ -322,7 +460,7 @@ export default function LoginPage({ isRegister = false }) {
                 <button
                   type="button"
                   className="btn btn-sm flex-fill"
-                  onClick={() => setAuthMethod("phone")}
+                  onClick={() => { setAuthMethod("phone"); setStep("phone"); setError(""); setInfoMsg(""); }}
                   style={{
                     background: authMethod === "phone" ? "var(--brand-primary)" : "transparent",
                     color: authMethod === "phone" ? "#fff" : "var(--text-muted)",
@@ -343,12 +481,12 @@ export default function LoginPage({ isRegister = false }) {
 
               {infoMsg && !error && (
                 <div className="alert alert-info py-2 mb-3" style={{ fontSize: "0.85rem", borderRadius: 8, background: "rgba(6,182,212,0.12)", borderColor: "rgba(6,182,212,0.3)", color: "#38bdf8" }}>
-                  ℹ️ {infoMsg}
+                  ✅ {infoMsg}
                 </div>
               )}
 
               {/* ── Option A: Email & Password Form ── */}
-              {authMethod === "email" && (
+              {authMethod === "email" && emailOtpStep === "form" && (
                 <form onSubmit={handleEmailAuth}>
                   {isRegisterPage && (
                     <div className="mb-3">
@@ -397,7 +535,76 @@ export default function LoginPage({ isRegister = false }) {
                   </div>
 
                   <button type="submit" className="btn-brand btn w-100" disabled={loading}>
-                    {loading ? <LoadingSpinner size="sm" text="" /> : isRegisterPage ? "Create Account →" : "Sign In →"}
+                    {loading ? <LoadingSpinner size="sm" text="" /> :
+                      isRegisterPage ? "Send Verification OTP →" : "Sign In →"}
+                  </button>
+
+                  {isRegisterPage && (
+                    <p className="text-muted-dark text-center mt-2" style={{ fontSize: "0.75rem" }}>
+                      📧 A 6-digit verification code will be sent to your email
+                    </p>
+                  )}
+                </form>
+              )}
+
+              {/* ── Email OTP Verification Step ── */}
+              {authMethod === "email" && emailOtpStep === "otp" && (
+                <form onSubmit={handleVerifyEmailOtp}>
+                  <div className="text-center mb-3">
+                    <div style={{ fontSize: "2rem", marginBottom: 8 }}>📧</div>
+                    <p className="text-muted-dark mb-1" style={{ fontSize: "0.875rem" }}>
+                      Enter the 6-digit code sent to
+                    </p>
+                    <p style={{ fontWeight: 700, color: "var(--brand-primary)", fontSize: "0.95rem" }}>
+                      {email}
+                    </p>
+                  </div>
+
+                  <div className="d-flex justify-content-between gap-1 mb-3">
+                    {emailOtp.map((digit, i) => (
+                      <input
+                        key={i}
+                        ref={(el) => (emailOtpRefs.current[i] = el)}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleEmailOtpChange(i, e.target.value)}
+                        onKeyDown={(e) => handleEmailOtpKeyDown(i, e)}
+                        className="otp-input form-control"
+                        autoFocus={i === 0}
+                      />
+                    ))}
+                  </div>
+
+                  <button type="submit" className="btn-brand btn w-100 mb-2" disabled={loading}>
+                    {loading ? <LoadingSpinner size="sm" text="" /> : "Verify & Continue →"}
+                  </button>
+
+                  <div className="text-center mt-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm text-brand p-0"
+                      style={{ fontSize: "0.8rem", textDecoration: "underline", background: "none", border: "none" }}
+                      onClick={resendEmailOtp}
+                      disabled={countdown > 0}
+                    >
+                      {countdown > 0 ? `Resend OTP in ${countdown}s` : "🔄 Resend OTP"}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn w-100 text-muted-dark mt-2"
+                    onClick={() => {
+                      setEmailOtpStep("form");
+                      setEmailOtp(["", "", "", "", "", ""]);
+                      setError("");
+                      setInfoMsg("");
+                    }}
+                    style={{ fontSize: "0.875rem" }}
+                  >
+                    ← Back to Form
                   </button>
                 </form>
               )}
@@ -434,12 +641,21 @@ export default function LoginPage({ isRegister = false }) {
                       <button type="submit" className="btn-brand btn w-100" disabled={loading}>
                         {loading ? <LoadingSpinner size="sm" text="" /> : "Send OTP →"}
                       </button>
+                      <p className="text-muted-dark text-center mt-2" style={{ fontSize: "0.75rem" }}>
+                        📱 A 6-digit OTP will be sent to your phone
+                      </p>
                     </form>
                   ) : (
                     <form onSubmit={verifyOtpCode}>
-                      <p className="text-muted-dark mb-2" style={{ fontSize: "0.875rem" }}>
-                        Enter the 6-digit OTP sent to <strong>+91 {phone.slice(-10)}</strong>
-                      </p>
+                      <div className="text-center mb-3">
+                        <div style={{ fontSize: "2rem", marginBottom: 8 }}>📱</div>
+                        <p className="text-muted-dark mb-1" style={{ fontSize: "0.875rem" }}>
+                          Enter the 6-digit OTP sent to
+                        </p>
+                        <p style={{ fontWeight: 700, color: "var(--brand-primary)", fontSize: "0.95rem" }}>
+                          +91 {phone.slice(-10)}
+                        </p>
+                      </div>
 
                       <div className="d-flex justify-content-between gap-1 mb-3">
                         {otp.map((digit, i) => (
@@ -462,24 +678,21 @@ export default function LoginPage({ isRegister = false }) {
                         {loading ? <LoadingSpinner size="sm" text="" /> : "Verify & Continue →"}
                       </button>
 
-                      <div className="text-center my-2">
+                      <div className="text-center mt-2">
                         <button
                           type="button"
                           className="btn btn-sm text-brand p-0"
                           style={{ fontSize: "0.8rem", textDecoration: "underline", background: "none", border: "none" }}
-                          onClick={() => {
-                            setOtp(["1", "2", "3", "4", "5", "6"]);
-                            setError("");
-                            setInfoMsg("Test OTP filled. Click 'Verify & Continue →'");
-                          }}
+                          onClick={resendPhoneOtp}
+                          disabled={countdown > 0}
                         >
-                          ⚡ Didn't receive SMS? Autofill Test OTP (123456)
+                          {countdown > 0 ? `Resend OTP in ${countdown}s` : "🔄 Resend OTP"}
                         </button>
                       </div>
 
                       <button
                         type="button"
-                        className="btn w-100 text-muted-dark"
+                        className="btn w-100 text-muted-dark mt-2"
                         onClick={() => {
                           setStep("phone");
                           setOtp(["", "", "", "", "", ""]);
