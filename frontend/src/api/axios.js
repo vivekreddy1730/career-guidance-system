@@ -1,15 +1,13 @@
 import axios from "axios";
 
 const getBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
-    return envUrl;
-  }
-  // When running on Vercel, phone, or any production cloud domain
+  // In production (Vercel), use same-origin requests.
+  // Vercel's rewrite rules proxy /api/* to the Render backend server-side.
+  // This eliminates CORS issues and mobile network blocks entirely.
   if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
-    return "https://career-guidance-backend-j1iv.onrender.com";
+    return "";  // Same-origin — Vercel proxies to Render
   }
-  // Local development fallback
+  // Local development: talk to local Flask backend directly
   return "";
 };
 
