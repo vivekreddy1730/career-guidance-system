@@ -93,11 +93,14 @@ export default function LoginPage({ isRegister = false }) {
           navigate(loginRes.data.is_new_user ? "/profile" : "/dashboard");
           return;
         } catch (loginErr) {
-          const msg = loginErr.response?.data?.error || "";
-          if (loginErr.response?.status === 401 || msg.toLowerCase().includes("invalid")) {
+          if (!loginErr.response) {
+            // No response at all — network error or Render cold-start timeout
+            setError("⏳ Server is starting up (free hosting takes ~30 seconds on first visit). Please wait a moment and try again.");
+          } else if (loginErr.response?.status === 401) {
             setError("Invalid email or password. If this is your first time using the live website, please click 'Register' below to create your account.");
           } else {
-            setError(msg || "Sign in failed. Please check your connection or click Register.");
+            const msg = loginErr.response?.data?.error || "";
+            setError(msg || "Sign in failed. Please try again.");
           }
           return;
         }
