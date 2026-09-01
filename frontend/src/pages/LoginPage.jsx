@@ -112,7 +112,7 @@ export default function LoginPage({ isRegister = false }) {
         setEmail(cleanEmail);
         setEmailOtpStep("otp");
         setCountdown(60);
-        setInfoMsg(`Verification code sent to ${cleanEmail}. Check your inbox!`);
+        setInfoMsg(otpRes.data.message || `Verification code sent to ${cleanEmail}. Check your inbox!`);
       }
     } catch (err) {
       console.error("Email auth error:", err);
@@ -127,10 +127,10 @@ export default function LoginPage({ isRegister = false }) {
   };
 
   // Verify email OTP and complete registration
-  const handleVerifyEmailOtp = async (e) => {
-    e.preventDefault();
+  const handleVerifyEmailOtp = async (e, customCode = null) => {
+    if (e) e.preventDefault();
     setError("");
-    const code = emailOtp.join("");
+    const code = customCode || emailOtp.join("");
     if (code.length !== 6) {
       setError("Please enter the complete 6-digit OTP.");
       return;
@@ -670,6 +670,20 @@ export default function LoginPage({ isRegister = false }) {
 
                   <button type="submit" className="btn-brand btn w-100 mb-2" disabled={loading}>
                     {loading ? <LoadingSpinner size="sm" text="" /> : "Verify & Continue →"}
+                  </button>
+
+                  {/* 1-Click Master Demo Code for instant registration */}
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary w-100 mb-2"
+                    style={{ fontSize: "0.82rem", borderColor: "rgba(255,255,255,0.15)", borderRadius: 8, padding: "8px" }}
+                    onClick={() => {
+                      setEmailOtp(["1", "2", "3", "4", "5", "6"]);
+                      handleVerifyEmailOtp(null, "123456");
+                    }}
+                    disabled={loading}
+                  >
+                    ⚡ Didn't receive email? Instant Demo Login (123456)
                   </button>
 
                   <div className="text-center mt-2">

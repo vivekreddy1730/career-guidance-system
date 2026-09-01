@@ -99,7 +99,7 @@ def send_email_otp(to_email: str, otp_code: str) -> bool:
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"CareerAI — Your Verification Code: {otp_code}"
+        msg["Subject"] = f"CareerAI - Your Verification Code: {otp_code}"
         msg["From"] = f"CareerAI <{smtp_email}>"
         msg["To"] = to_email
 
@@ -134,16 +134,43 @@ def send_email_otp(to_email: str, otp_code: str) -> bool:
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as server:
-            server.login(smtp_email, smtp_password)
-            server.send_message(msg)
+        sent = False
 
-        logger.info("Email OTP sent successfully to %s", to_email)
-        return True
+        # Try port 587 with STARTTLS first (works on most cloud servers including Render)
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_email, smtp_password)
+                server.send_message(msg)
+                sent = True
+                logger.info("Email OTP sent via port 587 (STARTTLS) to %s", to_email)
+        except Exception as e587:
+            logger.warning("Port 587 failed: %s — trying port 465 SSL...", e587)
+
+        # Fallback: try port 465 SSL
+        if not sent:
+            try:
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=20) as server:
+                    server.login(smtp_email, smtp_password)
+                    server.send_message(msg)
+                    sent = True
+                    logger.info("Email OTP sent via port 465 (SSL) to %s", to_email)
+            except Exception as e465:
+                logger.warning("Port 465 also failed: %s", e465)
+
+        if sent:
+            return True
+
+        # Both SMTP methods failed — OTP is still in memory so user can use demo code
+        logger.error("All SMTP methods failed for %s. OTP stored in memory — user can use 123456.", to_email)
+        return False
 
     except Exception as e:
         logger.error("Failed to send email OTP to %s: %s", to_email, e)
         return False
+
 
 
 def send_phone_otp(phone: str, otp_code: str) -> bool:
